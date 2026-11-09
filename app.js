@@ -1,0 +1,1135 @@
+const STORAGE_KEY = "sh-env-dashboard-v2";
+const HK = "Asia/Hong_Kong";
+const LEVEL_LABEL = { good: "很舒服", ok: "還可以", bad: "要留意", none: "未有讀數" };
+const TONE_TITLE = {
+  none: "等待讀數",
+  good: "課室現在很舒服",
+  ok: "課室大致舒服",
+  bad: "有讀數要留意",
+};
+
+const METRICS = [
+  {
+    key: "temperature",
+    name: "溫度",
+    short: "熱不熱",
+    unit: "°C",
+    decimals: 1,
+    color: "#ef6b4a",
+    tint: "#fff1ec",
+    field: 1,
+    eps: 0.3,
+    icon: "temp",
+    valid: (v) => v > -5 && v < 55,
+    bands: [
+      { level: "good", text: "20–25.5°C", test: (v) => v >= 20 && v < 25.5 },
+      { level: "ok", text: "18–20°C 或 25.5–28°C", test: (v) => (v >= 18 && v < 20) || (v >= 25.5 && v <= 28) },
+      { level: "bad", text: "低於 18°C 或高於 28°C", test: () => true },
+    ],
+    advice: {
+      good: "溫度很舒服，適合上課。",
+      ok: "溫度有一點偏冷或偏熱，可以告訴老師。",
+      bad: "溫度不太舒服，請告訴老師調節冷氣。",
+    },
+    about: "告訴我們課室熱不熱。大約 20 至 25.5 度，上課最舒服。",
+    action: "不舒服就告訴老師調節冷氣，不要自己亂按很多掣。",
+  },
+  {
+    key: "humidity",
+    name: "濕度",
+    short: "乾不乾",
+    unit: "%",
+    decimals: 0,
+    color: "#3d8bfd",
+    tint: "#eaf3ff",
+    field: 2,
+    eps: 2,
+    icon: "hum",
+    valid: (v) => v > 0 && v <= 100,
+    bands: [
+      { level: "good", text: "40–70%", test: (v) => v >= 40 && v < 70 },
+      { level: "ok", text: "30–40% 或 70–80%", test: (v) => (v >= 30 && v < 40) || (v >= 70 && v <= 80) },
+      { level: "bad", text: "低於 30% 或高於 80%", test: () => true },
+    ],
+    advice: {
+      good: "濕度很舒服，不會太乾，也不會太潮。",
+      ok: "空氣有一點乾或有一點潮，可以告訴老師。",
+      bad: "濕度不太舒服，請告訴老師。",
+    },
+    about: "告訴我們空氣乾不乾、潮不潮。太乾會不舒服，太潮也會悶。",
+    action: "太潮或太乾都可以告訴老師。",
+  },
+  {
+    key: "pm25",
+    name: "PM2.5",
+    short: "微細灰塵",
+    unit: "µg/m³",
+    decimals: 1,
+    color: "#7a6af5",
+    tint: "#f3f0ff",
+    field: 3,
+    eps: 2,
+    icon: "pm",
+    valid: (v) => v >= 0 && v <= 1000,
+    bands: [
+      { level: "good", text: "15 或以下", test: (v) => v <= 15 },
+      { level: "ok", text: "16–35", test: (v) => v <= 35 },
+      { level: "bad", text: "高於 35", test: () => true },
+    ],
+    advice: {
+      good: "微細懸浮粒子不多，空氣算清新。",
+      ok: "空氣中的微塵有一點多，可以告訴老師。",
+      bad: "微塵比較多，請告訴老師看看要不要關窗。",
+    },
+    about: "空氣中很細的灰塵，眼睛看不到。數值愈低，空氣愈清新。",
+    action: "數值高時告訴老師。向著馬路的窗，不一定要長開。",
+  },
+  {
+    key: "co2",
+    name: "二氧化碳",
+    short: "空氣新不新鮮",
+    unit: "ppm",
+    decimals: 0,
+    color: "#1aa37a",
+    tint: "#e7f8f1",
+    field: 4,
+    eps: 15,
+    icon: "co2",
+    valid: (v) => v >= 350 && v <= 5000,
+    bands: [
+      { level: "good", text: "低於 800 ppm", test: (v) => v < 800 },
+      { level: "ok", text: "800–1000 ppm", test: (v) => v <= 1000 },
+      { level: "bad", text: "高於 1000 ppm", test: () => true },
+    ],
+    advice: {
+      good: "二氧化碳很舒服，空氣仍然新鮮。",
+      ok: "二氧化碳有一點高，空氣沒有那麼新鮮。可以告訴老師開一扇窗。",
+      bad: "二氧化碳比較高，課室有點悶。請告訴老師開窗或開門。",
+    },
+    about: "人多，或門窗關太久，這個數字會升高，空氣就會變悶。",
+    action: "數字升高就開一點窗，讓新鮮空氣進來。",
+  },
+  {
+    key: "tvoc",
+    name: "TVOC",
+    short: "氣味氣體",
+    unit: "ppb",
+    decimals: 0,
+    color: "#e09a12",
+    tint: "#fff6e4",
+    field: 5,
+    eps: 15,
+    icon: "tvoc",
+    valid: (v) => v >= 0 && v <= 20000,
+    bands: [
+      { level: "good", text: "低於 200 ppb", test: (v) => v < 200 },
+      { level: "ok", text: "200–400 ppb", test: (v) => v <= 400 },
+      { level: "bad", text: "高於 400 ppb", test: () => true },
+    ],
+    advice: {
+      good: "氣味氣體不多，空氣很清爽。",
+      ok: "空氣中的氣味有一點多，可以告訴老師。",
+      bad: "氣味氣體比較多，請告訴老師開窗。",
+    },
+    about: "記號筆、清潔劑或新家具，都可能放出這些氣體。",
+    action: "氣味重時開窗，並把記號筆蓋好。",
+  },
+  {
+    key: "noise",
+    name: "噪音",
+    short: "安不安靜",
+    unit: "dB",
+    decimals: 0,
+    color: "#e25b8a",
+    tint: "#ffeff4",
+    field: 6,
+    eps: 3,
+    icon: "noise",
+    valid: (v) => v > 0 && v <= 140,
+    bands: [
+      { level: "good", text: "60 dB 或以下", test: (v) => v <= 60 },
+      { level: "ok", text: "61–75 dB", test: (v) => v <= 75 },
+      { level: "bad", text: "高於 75 dB", test: () => true },
+    ],
+    advice: {
+      good: "課室算安靜，大家聽得清楚。",
+      ok: "課室有點熱鬧，我們可以把聲音放輕。",
+      bad: "課室太吵了，請安靜一點，並告訴老師。",
+    },
+    about: "告訴我們課室安不安靜。上課時大約 60 分貝以下比較舒服。",
+    action: "太吵時，我們把聲音放輕一點。",
+  },
+];
+
+const ICONS = {
+  temp: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M10 14.5a4 4 0 1 0 4 0V6a2 2 0 1 0-4 0z"/><path d="M12 11V7"/></svg>',
+  hum: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3s6 7 6 11a6 6 0 0 1-12 0c0-4 6-11 6-11z"/></svg>',
+  pm: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="9" r="1.4" fill="currentColor"/><circle cx="14" cy="8" r="1" fill="currentColor"/><circle cx="16" cy="14" r="1.5" fill="currentColor"/><circle cx="10" cy="15" r="1.1" fill="currentColor"/><path d="M5 19h14"/></svg>',
+  co2: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M7 16a4 4 0 1 1 .5-8 5 5 0 0 1 9.5 1.5A3.5 3.5 0 1 1 17 16z"/></svg>',
+  tvoc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6"/><path d="M10 3v6.2a5 5 0 1 0 4 0V3"/></svg>',
+  noise: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 10h3l4-3v10l-4-3H4z"/><path d="M16 9a4 4 0 0 1 0 6"/><path d="M18.5 7a7 7 0 0 1 0 10"/></svg>',
+};
+
+const DEFAULT_SETTINGS = {
+  channelId: "3565648",
+  readKey: "6ZI8UKCGFSWY3V0G",
+  schoolName: "聖心",
+  className: "5A",
+  useDemo: false,
+  manualMap: false,
+  fields: Object.fromEntries(METRICS.map((metric) => [metric.key, metric.field])),
+};
+
+const state = {
+  settings: structuredClone(DEFAULT_SETTINGS),
+  source: "demo",
+  error: "",
+  series: {},
+  latestTime: null,
+  fetchedAt: null,
+  channelName: "",
+};
+
+const charts = new WeakMap();
+let refreshing = false;
+let lastRefreshAttempt = 0;
+let toastTimer = 0;
+
+function el(tag, attrs = {}, children = []) {
+  const node = document.createElement(tag);
+  for (const [key, value] of Object.entries(attrs)) {
+    if (value == null || value === false) continue;
+    if (key === "class") node.className = value;
+    else node.setAttribute(key, value);
+  }
+  for (const child of [].concat(children)) {
+    if (child == null) continue;
+    node.append(child.nodeType ? child : document.createTextNode(String(child)));
+  }
+  return node;
+}
+
+function text(selector, value) {
+  const node = document.querySelector(selector);
+  if (node) node.textContent = value == null ? "" : String(value);
+}
+
+function classLabel() {
+  return (state.settings.className || "5A").replace(/班$/, "");
+}
+
+function applyIdentity() {
+  const school = state.settings.schoolName || "聖心";
+  const label = classLabel();
+  document.querySelectorAll("[data-bind='school']").forEach((node) => { node.textContent = school; });
+  document.querySelectorAll("[data-bind='class']").forEach((node) => { node.textContent = label; });
+  document.title = `${school}環境站 · ${label}班`;
+}
+
+function loadSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+    if (!saved || typeof saved !== "object") return structuredClone(DEFAULT_SETTINGS);
+    return {
+      ...structuredClone(DEFAULT_SETTINGS),
+      ...saved,
+      fields: { ...DEFAULT_SETTINGS.fields, ...(saved.fields || {}) },
+    };
+  } catch {
+    return structuredClone(DEFAULT_SETTINGS);
+  }
+}
+
+function saveSettings() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state.settings));
+}
+
+function hkParts(date) {
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: HK,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  });
+  const map = {};
+  for (const part of fmt.formatToParts(date)) {
+    if (part.type !== "literal") map[part.type] = part.value;
+  }
+  if (map.hour === "24") map.hour = "00";
+  return map;
+}
+
+function atHK(year, month, day, hour, minute) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return new Date(`${year}-${pad(month)}-${pad(day)}T${pad(hour)}:${pad(minute)}:00+08:00`);
+}
+
+function clockParts(date) {
+  const map = {};
+  for (const part of new Intl.DateTimeFormat("zh-HK", {
+    timeZone: HK,
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  }).formatToParts(date)) {
+    if (part.type !== "literal") map[part.type] = part.value;
+  }
+  return {
+    hour: map.hour || "--",
+    minute: map.minute || "--",
+    second: map.second || "--",
+    period: map.dayPeriod || "",
+    date: new Intl.DateTimeFormat("zh-HK", { timeZone: HK, year: "numeric", month: "long", day: "numeric" }).format(date),
+    weekday: new Intl.DateTimeFormat("zh-HK", { timeZone: HK, weekday: "long" }).format(date),
+  };
+}
+
+function formatAxis(ts) {
+  const parts = hkParts(new Date(ts));
+  return `${Number(parts.month)}月${Number(parts.day)}日 ${parts.hour}:${parts.minute}`;
+}
+
+function ago(ts, now = Date.now()) {
+  const seconds = Math.max(0, Math.round((now - ts) / 1000));
+  if (seconds < 20) return "剛剛";
+  if (seconds < 60) return `${seconds} 秒前`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} 分鐘前`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} 小時前`;
+  return `${Math.round(hours / 24)} 日前`;
+}
+
+function roundTo(value, decimals) {
+  const factor = 10 ** decimals;
+  return Math.round(value * factor) / factor;
+}
+
+function median(values) {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+function levelOf(metric, value) {
+  if (value == null || Number.isNaN(value)) return "none";
+  for (const band of metric.bands) {
+    if (band.test(value)) return band.level;
+  }
+  return "bad";
+}
+
+function formatNumber(metric, value) {
+  if (value == null || Number.isNaN(value)) return "—";
+  return Number(value).toFixed(metric.decimals);
+}
+
+function valueText(metric, value) {
+  const number = formatNumber(metric, value);
+  if (number === "—") return number;
+  if (metric.unit === "°C" || metric.unit === "%") return `${number}${metric.unit}`;
+  return `${number} ${metric.unit}`;
+}
+
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function rand() {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function demoValue(key, hour, rand, day) {
+  const wobble = rand() - 0.5;
+  if (key === "temperature") return 25 + Math.sin((hour - 9) / 2) * 0.35 + wobble * 0.15 + ((day % 3) - 1) * 0.08;
+  if (key === "humidity") return 53 + Math.sin(hour / 2) * 2.5 + wobble * 1.5;
+  if (key === "pm25") return 6 + rand() * 5 + (hour > 10.6 && hour < 11.3 ? 9 : 0);
+  if (key === "co2") return 760 + Math.min(Math.max(hour - 8, 0), 4) * 40 + wobble * 18;
+  if (key === "tvoc") return 120 + (hour - 8) * 6 + rand() * 16;
+  if (key === "noise") return 42 + rand() * 10 + (hour >= 12.4 && hour <= 13.05 ? 20 : 0);
+  return 0;
+}
+
+function emptySeries() {
+  return Object.fromEntries(METRICS.map((metric) => [metric.key, []]));
+}
+
+function buildDemo(now = new Date()) {
+  const parts = hkParts(now);
+  const startToday = atHK(Number(parts.year), Number(parts.month), Number(parts.day), 8, 0);
+  const series = emptySeries();
+  for (let t = startToday.getTime() - 2 * 86400000; t <= now.getTime(); t += 12 * 60000) {
+    const date = new Date(t);
+    const stamp = hkParts(date);
+    const hour = Number(stamp.hour) + Number(stamp.minute) / 60;
+    if (hour < 8 || hour > 16) continue;
+    const rand = mulberry32(Math.floor(t / 60000));
+    const day = Number(stamp.day);
+    for (const metric of METRICS) {
+      series[metric.key].push({
+        t,
+        v: roundTo(demoValue(metric.key, hour, rand, day), metric.decimals),
+      });
+    }
+  }
+  return series;
+}
+
+function latestStamp(series) {
+  let max = null;
+  for (const points of Object.values(series)) {
+    for (const point of points) {
+      if (max == null || point.t > max) max = point.t;
+    }
+  }
+  return max;
+}
+
+function autoMap(meta) {
+  const rules = [
+    ["pm25", /pm\s*2|pm2\.5|懸浮/i],
+    ["tvoc", /tvoc|\bvoc\b/i],
+    ["co2", /co2|carbon dioxide|二氧化碳/i],
+    ["noise", /noise|sound|噪音|聲/i],
+    ["humidity", /hum|濕度/i],
+    ["temperature", /temp|溫度/i],
+  ];
+  const used = new Set();
+  const fields = {};
+  for (const [key, pattern] of rules) {
+    for (let n = 1; n <= 8; n += 1) {
+      if (used.has(n)) continue;
+      if (pattern.test(meta[`field${n}`] || "")) {
+        fields[key] = n;
+        used.add(n);
+        break;
+      }
+    }
+  }
+  return fields;
+}
+
+function parseFeeds(feeds, fields) {
+  const series = emptySeries();
+  for (const row of feeds) {
+    const t = new Date(row.created_at).getTime();
+    if (!Number.isFinite(t)) continue;
+    for (const metric of METRICS) {
+      const raw = row[`field${fields[metric.key]}`];
+      if (raw == null || raw === "") continue;
+      const value = Number(raw);
+      if (!Number.isFinite(value)) continue;
+      series[metric.key].push({ t, v: value });
+    }
+  }
+  for (const points of Object.values(series)) points.sort((a, b) => a.t - b.t);
+  return series;
+}
+
+async function fetchJson(url) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 12000);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal, cache: "no-store" });
+    const data = await res.json().catch(() => ({}));
+    return { res, data };
+  } catch (error) {
+    if (error.name === "AbortError") throw new Error("連線超時，請檢查網絡。");
+    throw new Error("連不上 ThingSpeak。請用網頁伺服器開啟這個頁面，不要直接雙擊檔案。");
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function channelUrl(id, key, feeds) {
+  const params = new URLSearchParams();
+  if (feeds) params.set("results", "120");
+  if (key) params.set("api_key", key);
+  params.set("_", String(Date.now()));
+  const query = params.toString();
+  const path = feeds ? "feeds.json" : ".json";
+  return `https://api.thingspeak.com/channels/${id}/${path}${query ? `?${query}` : ""}`.replace("/.json", ".json");
+}
+
+async function fetchThingSpeak(id, key) {
+  if (!/^\d+$/.test(id)) throw new Error("頻道編號只可以是數字。");
+  const feedPack = await fetchJson(channelUrl(id, key, true));
+  if (feedPack.res.status === 404) throw new Error("找不到這個頻道，請檢查編號。");
+  if ([400, 401, 403].includes(feedPack.res.status) || feedPack.data === -1 || feedPack.data?.error) {
+    throw new Error("讀不到數據。私人頻道要填 Read API Key。");
+  }
+  if (!feedPack.res.ok) throw new Error("ThingSpeak 暫時沒有回應，請稍後再試。");
+  const feeds = Array.isArray(feedPack.data.feeds) ? feedPack.data.feeds : [];
+  return { meta: feedPack.data.channel || {}, feeds };
+}
+
+function summarize(metric, points) {
+  const valid = points.filter((point) => metric.valid(point.v));
+  const latest = valid.at(-1);
+  const previous = valid.at(-2);
+  const value = latest ? latest.v : null;
+  let trend = value == null ? "未有讀數" : "最新一筆";
+  if (latest && previous) {
+    const same = formatNumber(metric, latest.v) === formatNumber(metric, previous.v);
+    if (same) trend = "和上一筆一樣";
+    else trend = latest.v > previous.v ? "比上一筆高" : "比上一筆低";
+  }
+  return { value, trend, valid };
+}
+
+function evaluate(now = Date.now()) {
+  return METRICS.map((metric) => {
+    const points = state.series[metric.key] || [];
+    const summary = summarize(metric, points);
+    return { metric, points, ...summary, level: summary.value == null ? "none" : levelOf(metric, summary.value) };
+  });
+}
+
+function overall(rows) {
+  const rated = rows.filter((row) => row.level !== "none");
+  const good = rated.filter((row) => row.level === "good").length;
+  const ok = rated.filter((row) => row.level === "ok").length;
+  const bad = rated.filter((row) => row.level === "bad").length;
+  let tone = "none";
+  if (bad) tone = "bad";
+  else if (ok) tone = "ok";
+  else if (good) tone = "good";
+  return { total: rated.length, good, ok, bad, tone };
+}
+
+function buildTips(rows, tone) {
+  if (tone === "none") return ["還未收到讀數。請檢查 micro:bit 雲板有沒有開機，並已把數據送到 ThingSpeak。"];
+  const flagged = rows.filter((row) => row.level === "ok" || row.level === "bad");
+  if (!flagged.length) {
+    return [
+      "課室現在很舒服，適合上課。",
+      "如果二氧化碳慢慢升高，可以告訴老師開一點窗。",
+      "大家輕聲說話，噪音就會保持得更好。",
+    ];
+  }
+  const tips = flagged.map((row) => row.metric.advice[row.level]);
+  if (tips.length < 3) tips.push("其他讀數都在舒服範圍。");
+  return tips.slice(0, 3);
+}
+
+function icon(name) {
+  const span = document.createElement("span");
+  span.className = "bubble";
+  span.innerHTML = ICONS[name];
+  return span;
+}
+
+function buildShells() {
+  const metrics = document.getElementById("metric-grid");
+  const chartsGrid = document.getElementById("chart-grid");
+  const learn = document.getElementById("learn-grid");
+  for (const metric of METRICS) {
+    const card = el("article", { class: "card metric", id: `metric-${metric.key}` });
+    card.style.setProperty("--accent", metric.color);
+    card.style.setProperty("--tint", metric.tint);
+    const top = el("div", { class: "metric-top" });
+    top.append(icon(metric.icon));
+    top.append(el("div", {}, [el("div", { class: "metric-name" }, metric.name), el("div", { class: "metric-short" }, metric.short)]));
+    top.append(el("span", { class: "pill tiny", id: `pill-${metric.key}` }, "—"));
+    card.append(top);
+    card.append(el("div", { class: "metric-value", id: `value-${metric.key}` }, "—"));
+    card.append(el("div", { class: "metric-trend", id: `trend-${metric.key}` }, ""));
+    const plot = el("div", { class: "plot plot-sm", "data-chart": metric.key });
+    card.append(plot);
+    metrics.append(card);
+    watchPlot(plot);
+
+    const chart = el("article", { class: "card chart-card", id: `chart-${metric.key}` });
+    const head = el("div", { class: "chart-head" });
+    head.append(el("div", {}, [el("h3", {}, metric.name), el("p", { class: "metric-short" }, metric.short)]));
+    head.append(el("div", { class: "chart-now", id: `chart-now-${metric.key}` }, "—"));
+    chart.append(head);
+    const large = el("div", { class: "plot plot-lg", "data-chart": metric.key });
+    chart.append(large);
+    chart.append(el("p", { class: "chart-foot", id: `chart-foot-${metric.key}` }, ""));
+    chartsGrid.append(chart);
+    watchPlot(large);
+
+    const lesson = el("article", { class: "card learn-card" });
+    lesson.append(el("p", { class: "eyebrow" }, metric.short));
+    lesson.append(el("h3", {}, `${metric.name}（${metric.unit}）`));
+    lesson.append(el("p", { class: "about" }, metric.about));
+    for (const band of metric.bands) {
+      lesson.append(el("div", { class: `band ${band.level}` }, [el("b", {}, LEVEL_LABEL[band.level]), el("span", {}, band.text)]));
+    }
+    lesson.append(el("p", { class: "action" }, metric.action));
+    learn.append(lesson);
+  }
+}
+
+const plotObserver = new ResizeObserver((entries) => {
+  for (const entry of entries) drawChart(entry.target);
+});
+
+function watchPlot(plot) {
+  plotObserver.observe(plot);
+}
+
+function drawChart(plot, attempt = 0) {
+  const spec = charts.get(plot);
+  if (!spec) return;
+  const width = plot.clientWidth;
+  if (width < 20) {
+    if (attempt < 8) requestAnimationFrame(() => drawChart(plot, attempt + 1));
+    return;
+  }
+  const { points, metric, compact } = spec;
+  let svg = plot.querySelector("svg");
+  let tip = plot.querySelector(".chart-tip");
+  plot.querySelector(".empty")?.remove();
+  if (!points.length) {
+    svg?.remove();
+    if (tip) tip.hidden = true;
+    if (!plot.querySelector(".empty")) plot.append(el("p", { class: "empty" }, "未有讀數"));
+    plot._layout = null;
+    return;
+  }
+  if (!svg) {
+    svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    plot.append(svg);
+  }
+  if (!compact && !tip) {
+    tip = el("div", { class: "chart-tip", hidden: "hidden" });
+    plot.append(tip);
+  }
+  const height = compact ? 48 : 200;
+  const pad = compact ? { l: 2, r: 2, t: 6, b: 6 } : { l: 46, r: 10, t: 12, b: 26 };
+  const innerW = Math.max(1, width - pad.l - pad.r);
+  const innerH = Math.max(1, height - pad.t - pad.b);
+  const dataMin = Math.min(...points.map((point) => point.v));
+  const dataMax = Math.max(...points.map((point) => point.v));
+  let min = dataMin;
+  let max = dataMax;
+  if (min === max) { min -= 1; max += 1; }
+  const slack = (max - min) * 0.18;
+  min -= slack;
+  max += slack;
+  const t0 = points[0].t;
+  const t1 = points[points.length - 1].t;
+  const spanT = Math.max(1, t1 - t0);
+  const xOf = (t) => pad.l + ((t - t0) / spanT) * innerW;
+  const yOf = (v) => pad.t + (1 - (v - min) / (max - min)) * innerH;
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  svg.setAttribute("preserveAspectRatio", "none");
+  svg.replaceChildren();
+  const add = (name, attrs) => {
+    const node = document.createElementNS("http://www.w3.org/2000/svg", name);
+    for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value);
+    svg.append(node);
+    return node;
+  };
+  if (!compact) {
+    [dataMax, (dataMax + dataMin) / 2, dataMin].forEach((tick) => {
+      const y = yOf(tick);
+      add("line", { x1: pad.l, x2: width - pad.r, y1: y, y2: y, stroke: "#e6eaf2", "stroke-width": 1 });
+      add("text", {
+        x: pad.l - 6,
+        y: y + 4,
+        "text-anchor": "end",
+        fill: "#8b93a7",
+        "font-size": 11,
+      }).textContent = formatNumber(metric, tick);
+    });
+    const labels = width < 280 ? [t0, t1] : [t0, t0 + spanT / 2, t1];
+    labels.forEach((t, index) => {
+      const anchor = index === 0 ? "start" : index === labels.length - 1 ? "end" : "middle";
+      const x = index === 0 ? pad.l : index === labels.length - 1 ? width - pad.r : xOf(t);
+      add("text", {
+        x,
+        y: height - 6,
+        "text-anchor": anchor,
+        fill: "#8b93a7",
+        "font-size": 11,
+      }).textContent = formatAxis(t);
+    });
+  }
+  const gap = 45 * 60 * 1000;
+  let segment = [];
+  const flush = () => {
+    if (!segment.length) return;
+    const line = segment.map((point, index) => `${index ? "L" : "M"}${xOf(point.t).toFixed(1)},${yOf(point.v).toFixed(1)}`).join(" ");
+    const bottom = (pad.t + innerH).toFixed(1);
+    add("path", {
+      d: `${line} L${xOf(segment[segment.length - 1].t).toFixed(1)},${bottom} L${xOf(segment[0].t).toFixed(1)},${bottom} Z`,
+      fill: metric.color,
+      opacity: "0.14",
+    });
+    if (segment.length === 1) {
+      add("circle", { cx: xOf(segment[0].t), cy: yOf(segment[0].v), r: compact ? 2.5 : 3.5, fill: metric.color });
+    } else {
+      add("path", {
+        d: line,
+        fill: "none",
+        stroke: metric.color,
+        "stroke-width": compact ? 2 : 2.5,
+        "stroke-linecap": "round",
+        "stroke-linejoin": "round",
+      });
+    }
+    segment = [];
+  };
+  for (const point of points) {
+    const prev = segment[segment.length - 1];
+    if (prev && point.t - prev.t > gap) flush();
+    segment.push(point);
+  }
+  flush();
+  if (!compact) {
+    const last = points[points.length - 1];
+    add("circle", { cx: xOf(last.t), cy: yOf(last.v), r: 4, fill: "#fff", stroke: metric.color, "stroke-width": 2 });
+  }
+  plot._layout = { points, xOf, yOf, width, height, metric, compact };
+  if (!plot.dataset.bound) {
+    plot.dataset.bound = "1";
+    plot.addEventListener("mousemove", onChartMove);
+    plot.addEventListener("mouseleave", () => {
+      const node = plot.querySelector(".chart-tip");
+      if (node) node.hidden = true;
+    });
+  }
+}
+
+function countGaps(points) {
+  let gaps = 0;
+  for (let i = 1; i < points.length; i += 1) {
+    if (points[i].t - points[i - 1].t > 45 * 60 * 1000) gaps += 1;
+  }
+  return gaps;
+}
+
+function onChartMove(event) {
+  const layout = event.currentTarget._layout;
+  const tip = event.currentTarget.querySelector(".chart-tip");
+  if (!layout || layout.compact || !tip || !layout.points.length) return;
+  const rect = event.currentTarget.getBoundingClientRect();
+  const px = ((event.clientX - rect.left) / rect.width) * layout.width;
+  let best = null;
+  let bestDist = Infinity;
+  for (const point of layout.points) {
+    const dist = Math.abs(layout.xOf(point.t) - px);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = point;
+    }
+  }
+  if (!best || bestDist > 28) {
+    tip.hidden = true;
+    return;
+  }
+  tip.hidden = false;
+  tip.textContent = `${formatAxis(best.t)} · ${valueText(layout.metric, best.v)}`;
+  tip.style.left = `${(layout.xOf(best.t) / layout.width) * rect.width}px`;
+  tip.style.top = `${Math.max(32, (layout.yOf(best.v) / layout.height) * rect.height)}px`;
+}
+
+function setChart(plot, points, metric, compact) {
+  const valid = points.filter((point) => metric.valid(point.v));
+  charts.set(plot, { points: valid, metric, compact });
+  drawChart(plot);
+}
+
+function renderRing(summary) {
+  const ring = document.getElementById("ring");
+  const color = summary.tone === "bad" ? "#e15b64" : summary.tone === "ok" ? "#e0a100" : summary.tone === "good" ? "#1aaa72" : "#c5ccd8";
+  const radius = 36;
+  const circ = 2 * Math.PI * radius;
+  const pct = summary.total ? summary.good / summary.total : 0;
+  const dash = (circ * pct).toFixed(2);
+  const gap = (circ - circ * pct).toFixed(2);
+  const label = summary.total ? `${summary.good}/${summary.total}` : "—";
+  ring.replaceChildren();
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 96 96");
+  svg.setAttribute("width", "96");
+  svg.setAttribute("height", "96");
+  const track = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+  track.setAttribute("cx", "48");
+  track.setAttribute("cy", "48");
+  track.setAttribute("r", String(radius));
+  track.setAttribute("fill", "none");
+  track.setAttribute("stroke", "#e7ebf3");
+  track.setAttribute("stroke-width", "8");
+  const arc = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+  arc.setAttribute("cx", "48");
+  arc.setAttribute("cy", "48");
+  arc.setAttribute("r", String(radius));
+  arc.setAttribute("fill", "none");
+  arc.setAttribute("stroke", color);
+  arc.setAttribute("stroke-width", "8");
+  arc.setAttribute("stroke-linecap", "round");
+  arc.setAttribute("stroke-dasharray", `${dash} ${gap}`);
+  arc.setAttribute("transform", "rotate(-90 48 48)");
+  const labelNode = document.createElementNS("http://www.w3.org/2000/svg", "text");
+  labelNode.setAttribute("x", "48");
+  labelNode.setAttribute("y", "53");
+  labelNode.setAttribute("text-anchor", "middle");
+  labelNode.setAttribute("font-size", "16");
+  labelNode.setAttribute("font-weight", "700");
+  labelNode.setAttribute("fill", "#1c2434");
+  labelNode.textContent = label;
+  svg.append(track, arc, labelNode);
+  ring.append(svg);
+}
+
+function chartFoot(metric, points) {
+  if (!points.length) return "未有可用讀數";
+  const min = Math.min(...points.map((point) => point.v));
+  const max = Math.max(...points.map((point) => point.v));
+  let note = `最低 ${valueText(metric, min)} · 最高 ${valueText(metric, max)}`;
+  if (countGaps(points) > 0) note += " · 斷開表示中間沒有讀數";
+  return note;
+}
+
+function render() {
+  const now = Date.now();
+  const rows = evaluate(now);
+  const summary = overall(rows);
+  const tips = buildTips(rows, summary.tone);
+  const label = classLabel();
+
+  const banner = document.getElementById("banner");
+  const showBanner = state.source !== "live" || Boolean(state.error);
+  banner.hidden = !showBanner;
+  banner.classList.toggle("is-error", Boolean(state.error));
+  if (showBanner) {
+    const demoCopy = `現在是 ${label} 班的示範畫面，方便先看版面。連接 ThingSpeak 後，溫度、濕度、PM2.5、二氧化碳、TVOC 和噪音會改為 micro:bit 雲板的真實讀數。`;
+    text("#banner-text", state.error ? `${state.error}${state.source === "demo" ? " 暫時仍顯示示範數據。" : ""}` : demoCopy);
+    text("#banner-action", state.error ? "檢查設定" : "連接 ThingSpeak");
+  }
+
+  const livePill = document.getElementById("live-pill");
+  livePill.classList.remove("is-live", "is-demo", "is-loading");
+  if (state.source === "live") {
+    livePill.classList.add("is-live");
+    text("#live-pill-text", state.channelName ? `即時數據 · ${state.channelName}` : "即時數據");
+    text("#open-settings", "老師設定");
+  } else if (state.source === "loading") {
+    livePill.classList.add("is-loading");
+    text("#live-pill-text", "正在讀取");
+    text("#open-settings", "連接 ThingSpeak");
+  } else {
+    livePill.classList.add("is-demo");
+    text("#live-pill-text", "示範數據");
+    text("#open-settings", "連接 ThingSpeak");
+  }
+
+  const roomTitle = document.getElementById("room-title");
+  roomTitle.textContent = TONE_TITLE[summary.tone];
+  roomTitle.className = `lead is-${summary.tone}`;
+  text("#room-detail", tips[0] || "");
+  const temp = rows.find((row) => row.metric.key === "temperature");
+  text("#badge-temp", temp && temp.value != null ? `溫度 ${valueText(temp.metric, temp.value)}` : "溫度 —");
+  text("#badge-air", summary.tone === "good" ? "空氣不錯" : summary.tone === "ok" ? "可以再看看" : summary.tone === "bad" ? "要告訴老師" : "等待讀數");
+
+  for (const row of rows) {
+    const pill = document.getElementById(`pill-${row.metric.key}`);
+    pill.textContent = LEVEL_LABEL[row.level];
+    pill.className = `pill tiny ${row.level}`;
+    const value = document.getElementById(`value-${row.metric.key}`);
+    value.textContent = "";
+    value.append(formatNumber(row.metric, row.value));
+    if (row.value != null) value.append(el("span", { class: "metric-unit" }, row.metric.unit === "°C" || row.metric.unit === "%" ? row.metric.unit : ` ${row.metric.unit}`));
+    value.title = "ThingSpeak 最新一筆讀數";
+    text(`#trend-${row.metric.key}`, row.level === "none" ? "未有讀數" : row.trend);
+    setChart(document.querySelector(`#metric-${row.metric.key} .plot`), row.points, row.metric, true);
+    text(`#chart-now-${row.metric.key}`, row.value == null ? "—" : valueText(row.metric, row.value));
+    const valid = row.points.filter((point) => row.metric.valid(point.v));
+    text(`#chart-foot-${row.metric.key}`, chartFoot(row.metric, valid));
+    setChart(document.querySelector(`#chart-${row.metric.key} .plot`), row.points, row.metric, false);
+  }
+
+  renderRing(summary);
+  text("#score-title", TONE_TITLE[summary.tone]);
+  if (!summary.total) text("#score-detail", "收到讀數後，這裡會顯示有幾項很舒服。");
+  else {
+    const parts = [`${summary.good} 項很舒服`];
+    if (summary.ok) parts.push(`${summary.ok} 項還可以`);
+    if (summary.bad) parts.push(`${summary.bad} 項要留意`);
+    text("#score-detail", parts.join("，"));
+  }
+  const tipList = document.getElementById("tips");
+  tipList.replaceChildren();
+  tips.forEach((tip, index) => {
+    tipList.append(el("li", {}, [el("span", {}, index + 1), el("div", {}, tip)]));
+  });
+
+  const link = document.getElementById("channel-link");
+  if (state.source === "live" && state.settings.channelId) {
+    text("#channel-note", state.channelName ? `已連接頻道「${state.channelName}」。` : `已連接頻道 ${state.settings.channelId}。`);
+    link.hidden = false;
+    link.href = `https://thingspeak.com/channels/${state.settings.channelId}`;
+  } else if (state.source === "loading") {
+    text("#channel-note", "正在連接 ThingSpeak…");
+    link.hidden = true;
+  } else {
+    text("#channel-note", "未連接。預設對應 Field 1 溫度、2 濕度、3 PM2.5、4 二氧化碳、5 TVOC、6 噪音。");
+    link.hidden = true;
+  }
+  tickClock();
+}
+
+function sensorLine() {
+  if (state.source === "loading") return "正在向 ThingSpeak 讀取課室讀數…";
+  if (state.source === "demo") return "時鐘是香港時間。下面的讀數連接頻道後，就會改成雲板數據。";
+  if (!state.latestTime) return "頻道已連接，但還沒有讀數。";
+  const when = formatAxis(state.latestTime);
+  if (Date.now() - state.latestTime > 30 * 60 * 1000) {
+    return `最後感測時間 ${when}（${ago(state.latestTime)}）。雲板可能休息了。`;
+  }
+  return `感測時間 ${when}（${ago(state.latestTime)}）`;
+}
+
+function tickClock() {
+  const clock = clockParts(new Date());
+  text("#clock-hm", `${clock.hour}:${clock.minute}`);
+  text("#clock-sec", `:${clock.second}`);
+  text("#clock-period", clock.period);
+  text("#clock-date", `${clock.date} ${clock.weekday}`);
+  text("#sensor-line", sensorLine());
+  if (state.source === "live" || state.source === "loading") refresh();
+  if (state.source === "loading") text("#update-pill-text", "讀取中");
+  else if (state.source === "demo") text("#update-pill-text", "尚未連接");
+  else text("#update-pill-text", state.fetchedAt ? `已更新 ${ago(state.fetchedAt)}` : "—");
+}
+
+function toast(message) {
+  const node = document.getElementById("toast");
+  node.textContent = message;
+  node.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => node.classList.remove("show"), 2800);
+}
+
+function fillForm() {
+  const settings = state.settings;
+  document.getElementById("channel-id").value = settings.channelId;
+  document.getElementById("read-key").value = settings.readKey;
+  document.getElementById("school-name").value = settings.schoolName;
+  document.getElementById("class-name").value = settings.className;
+  document.getElementById("use-demo").checked = settings.useDemo;
+  document.getElementById("manual-map").checked = settings.manualMap;
+  for (const metric of METRICS) {
+    document.getElementById(`field-${metric.key}`).value = settings.fields[metric.key];
+  }
+}
+
+function readForm() {
+  const fields = {};
+  for (const metric of METRICS) {
+    let n = Number(document.getElementById(`field-${metric.key}`).value);
+    if (!Number.isInteger(n) || n < 1 || n > 8) n = metric.field;
+    fields[metric.key] = n;
+  }
+  const channelId = document.getElementById("channel-id").value.replace(/\D/g, "");
+  const useDemo = document.getElementById("use-demo").checked || !channelId;
+  return {
+    channelId,
+    readKey: document.getElementById("read-key").value.trim(),
+    schoolName: document.getElementById("school-name").value.trim() || "聖心",
+    className: document.getElementById("class-name").value.trim() || "5A",
+    useDemo,
+    manualMap: document.getElementById("manual-map").checked,
+    fields,
+  };
+}
+
+function openSettings() {
+  fillForm();
+  document.getElementById("form-message").textContent = "";
+  document.getElementById("test-result").textContent = "";
+  document.getElementById("settings").showModal();
+}
+
+async function refresh(force = false) {
+  if (state.settings.useDemo || !state.settings.channelId) return;
+  if (refreshing) return;
+  if (!force && Date.now() - lastRefreshAttempt < 8000) return;
+  lastRefreshAttempt = Date.now();
+  refreshing = true;
+  try {
+    const { meta, feeds } = await fetchThingSpeak(state.settings.channelId, state.settings.readKey);
+    let fields = { ...state.settings.fields };
+    if (!state.settings.manualMap) {
+      const merged = { ...fields, ...autoMap(meta) };
+      if (JSON.stringify(merged) !== JSON.stringify(state.settings.fields)) {
+        state.settings.fields = merged;
+        saveSettings();
+      }
+      fields = merged;
+    }
+    state.series = parseFeeds(feeds, fields);
+    state.channelName = meta.name || "";
+    state.latestTime = latestStamp(state.series);
+    state.fetchedAt = Date.now();
+    state.error = "";
+    state.source = "live";
+    render();
+  } catch (error) {
+    state.error = error.message || "讀取失敗。";
+    if (state.source !== "live") {
+      state.source = "demo";
+      state.series = buildDemo();
+      state.latestTime = latestStamp(state.series);
+    }
+    render();
+  } finally {
+    refreshing = false;
+  }
+}
+
+function showDemo() {
+  state.source = "demo";
+  state.error = "";
+  state.channelName = "";
+  state.series = buildDemo();
+  state.latestTime = latestStamp(state.series);
+  render();
+}
+
+function bindUi() {
+  document.querySelectorAll("[data-open-settings]").forEach((button) => {
+    button.addEventListener("click", openSettings);
+  });
+  document.getElementById("close-settings").addEventListener("click", () => {
+    document.getElementById("settings").close();
+  });
+  document.getElementById("settings").addEventListener("click", (event) => {
+    if (event.target.id === "settings") event.currentTarget.close();
+  });
+  document.getElementById("channel-id").addEventListener("input", (event) => {
+    if (event.target.value.trim()) document.getElementById("use-demo").checked = false;
+  });
+  document.getElementById("channel-id").addEventListener("blur", (event) => {
+    const match = event.target.value.match(/channels\/(\d+)/);
+    event.target.value = match ? match[1] : event.target.value.replace(/\D/g, "");
+  });
+  document.getElementById("clear-settings").addEventListener("click", () => {
+    document.getElementById("channel-id").value = "";
+    document.getElementById("read-key").value = "";
+    document.getElementById("use-demo").checked = true;
+    document.getElementById("manual-map").checked = false;
+    for (const metric of METRICS) document.getElementById(`field-${metric.key}`).value = String(metric.field);
+    document.getElementById("form-message").textContent = "已清除。按儲存後會回到示範數據。";
+    document.getElementById("test-result").textContent = "";
+  });
+  document.getElementById("test-connection").addEventListener("click", async () => {
+    const next = readForm();
+    const message = document.getElementById("form-message");
+    const result = document.getElementById("test-result");
+    message.textContent = "";
+    if (!next.channelId) {
+      message.textContent = "請先輸入頻道編號。";
+      return;
+    }
+    result.textContent = "測試中…";
+    try {
+      const { meta, feeds } = await fetchThingSpeak(next.channelId, next.readKey);
+      const detected = autoMap(meta);
+      if (!next.manualMap) {
+        for (const [key, n] of Object.entries(detected)) {
+          const input = document.getElementById(`field-${key}`);
+          if (input) input.value = String(n);
+        }
+      }
+      const fields = next.manualMap ? next.fields : { ...next.fields, ...detected };
+      const series = parseFeeds(feeds, fields);
+      const lines = [`頻道名稱：${meta.name || "（沒有名稱）"}`];
+      for (const metric of METRICS) {
+        const n = fields[metric.key];
+        const label = meta[`field${n}`] || "未命名";
+        const last = series[metric.key].at(-1);
+        lines.push(`${metric.name} → Field ${n}（${label}）最新 ${last ? last.v : "沒有"}`);
+      }
+      lines.push(`最近收到 ${feeds.length} 筆紀錄。`);
+      result.textContent = lines.join("\n");
+    } catch (error) {
+      result.textContent = "";
+      message.textContent = error.message;
+    }
+  });
+  document.getElementById("settings-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const next = readForm();
+    const message = document.getElementById("form-message");
+    if (!next.useDemo && !next.channelId) {
+      message.textContent = "請輸入頻道編號，或勾選使用示範數據。";
+      return;
+    }
+    state.settings = next;
+    saveSettings();
+    applyIdentity();
+    document.getElementById("settings").close();
+    toast("已儲存設定");
+    if (next.useDemo) showDemo();
+    else {
+      state.source = "loading";
+      state.error = "";
+      state.series = emptySeries();
+      render();
+      await refresh(true);
+    }
+  });
+  document.getElementById("refresh-now").addEventListener("click", () => {
+    if (state.settings.useDemo || !state.settings.channelId) {
+      toast("示範數據不用更新。連接 ThingSpeak 後就可以讀取真實讀數。");
+      return;
+    }
+    refresh(true);
+  });
+  document.querySelectorAll("[data-target]").forEach((button) => {
+    button.addEventListener("click", () => {
+      document.getElementById(button.dataset.target)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      document.querySelectorAll("[data-target]").forEach((item) => item.classList.toggle("active", item === button));
+    });
+  });
+  const spy = new IntersectionObserver((entries) => {
+    const visible = entries.filter((entry) => entry.isIntersecting).sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+    if (!visible) return;
+    document.querySelectorAll("[data-target]").forEach((button) => {
+      button.classList.toggle("active", button.dataset.target === visible.target.id);
+    });
+  }, { threshold: 0.35 });
+  ["overview", "metrics", "charts", "learn"].forEach((id) => spy.observe(document.getElementById(id)));
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") refresh(true);
+  });
+}
+
+function boot() {
+  state.settings = loadSettings();
+  const queryChannel = new URLSearchParams(location.search).get("channel") || "";
+  const channel = queryChannel.replace(/\D/g, "");
+  if (channel) {
+    state.settings.channelId = channel;
+    state.settings.useDemo = false;
+    saveSettings();
+  }
+  applyIdentity();
+  bindUi();
+  buildShells();
+  if (!state.settings.useDemo && state.settings.channelId) {
+    state.source = "loading";
+    state.series = emptySeries();
+    render();
+    refresh();
+  } else {
+    showDemo();
+  }
+  setInterval(tickClock, 1000);
+}
+
+boot();
