@@ -831,9 +831,6 @@ function render() {
   roomTitle.textContent = TONE_TITLE[summary.tone];
   roomTitle.className = `lead is-${summary.tone}`;
   text("#room-detail", tips[0] || "");
-  const temp = rows.find((row) => row.metric.key === "temperature");
-  text("#badge-temp", temp && temp.value != null ? `溫度 ${valueText(temp.metric, temp.value)}` : "溫度 —");
-  text("#badge-air", summary.tone === "good" ? "空氣不錯" : summary.tone === "ok" ? "可以再看看" : summary.tone === "bad" ? "要告訴老師" : "等待讀數");
 
   for (const row of rows) {
     const pill = document.getElementById(`pill-${row.metric.key}`);

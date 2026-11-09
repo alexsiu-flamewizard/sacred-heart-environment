@@ -295,19 +295,6 @@ h2, h3, p { margin: 0; }
 .room-art { position: relative; min-height: 200px; }
 .room-svg { width: 100%; height: 210px; display: block; }
 
-.float-chip {
-  position: absolute;
-  background: white;
-  border-radius: 999px;
-  padding: 6px 10px;
-  box-shadow: 0 8px 20px rgba(40, 60, 100, 0.12);
-  font-size: 13px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-.chip-temp { left: 10px; bottom: 16px; }
-.chip-air { right: 10px; bottom: 16px; }
-
 .section, .hero { scroll-margin-top: 16px; }
 .section { display: grid; gap: 12px; }
 .section-head h2 { font-size: 22px; }
