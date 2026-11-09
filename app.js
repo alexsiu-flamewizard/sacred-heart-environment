@@ -65,8 +65,8 @@ const METRICS = [
     short: "微細灰塵",
     unit: "µg/m³",
     decimals: 1,
-    color: "#7a6af5",
-    tint: "#f3f0ff",
+    color: "#1f9d62",
+    tint: "#e8f8ef",
     field: 3,
     eps: 2,
     icon: "pm",
@@ -284,7 +284,7 @@ function clockParts(date) {
     minute: map.minute || "--",
     second: map.second || "--",
     period: map.dayPeriod || "",
-    date: new Intl.DateTimeFormat("zh-HK", { timeZone: HK, year: "numeric", month: "long", day: "numeric" }).format(date),
+    date: new Intl.DateTimeFormat("zh-HK", { timeZone: HK, month: "long", day: "numeric" }).format(date),
     weekday: new Intl.DateTimeFormat("zh-HK", { timeZone: HK, weekday: "long" }).format(date),
   };
 }
@@ -530,12 +530,12 @@ function buildShells() {
     card.style.setProperty("--tint", metric.tint);
     const top = el("div", { class: "metric-top" });
     top.append(icon(metric.icon));
-    top.append(el("div", {}, [el("div", { class: "metric-name" }, metric.name), el("div", { class: "metric-short" }, metric.short)]));
-    top.append(el("span", { class: "pill tiny", id: `pill-${metric.key}` }, "—"));
+    top.append(el("div", { class: "metric-name" }, metric.name));
     card.append(top);
     card.append(el("div", { class: "metric-value", id: `value-${metric.key}` }, "—"));
     const plot = el("div", { class: "plot plot-sm", "data-chart": metric.key });
     card.append(plot);
+    card.append(el("div", { class: "metric-status", id: `pill-${metric.key}` }, "—"));
     metrics.append(card);
     watchPlot(plot);
 
@@ -735,7 +735,7 @@ function setChart(plot, points, metric, compact) {
 
 function renderRing(summary) {
   const ring = document.getElementById("ring");
-  const color = summary.tone === "bad" ? "#e15b64" : summary.tone === "ok" ? "#e0a100" : summary.tone === "good" ? "#1aaa72" : "#c5ccd8";
+  const color = summary.tone === "bad" ? "#e15b64" : summary.tone === "none" ? "#c5ccd8" : "#1aaa72";
   const radius = 36;
   const circ = 2 * Math.PI * radius;
   const pct = summary.total ? summary.good / summary.total : 0;
@@ -802,31 +802,33 @@ function render() {
     text("#banner-action", state.error ? "檢查設定" : "連接 ThingSpeak");
   }
 
+  const online = rows.filter((row) => row.value != null).length;
   const livePill = document.getElementById("live-pill");
   livePill.classList.remove("is-live", "is-demo", "is-loading");
   if (state.source === "live") {
     livePill.classList.add("is-live");
-    text("#live-pill-text", state.channelName ? `即時數據 · ${state.channelName}` : "即時數據");
+    text("#live-pill-text", online === METRICS.length ? "micro:bit 連線中 · 6 個感測器正常" : `micro:bit 連線中 · ${online} 個感測器有讀數`);
     text("#open-settings", "老師設定");
   } else if (state.source === "loading") {
     livePill.classList.add("is-loading");
     text("#live-pill-text", "正在讀取");
-    text("#open-settings", "連接 ThingSpeak");
+    text("#open-settings", "老師設定");
   } else {
     livePill.classList.add("is-demo");
     text("#live-pill-text", "示範數據");
-    text("#open-settings", "連接 ThingSpeak");
+    text("#open-settings", "老師設定");
   }
 
   const roomTitle = document.getElementById("room-title");
   roomTitle.textContent = TONE_TITLE[summary.tone];
   roomTitle.className = `lead is-${summary.tone}`;
-  text("#room-detail", tips[0] || "");
+  text("#room-detail", roomSentence(rows, summary));
+  text("#dock-text", dockSentence(rows, summary));
 
   for (const row of rows) {
     const pill = document.getElementById(`pill-${row.metric.key}`);
     pill.textContent = LEVEL_LABEL[row.level];
-    pill.className = `pill tiny ${row.level}`;
+    pill.className = `metric-status ${row.level}`;
     const value = document.getElementById(`value-${row.metric.key}`);
     value.textContent = "";
     value.append(formatNumber(row.metric, row.value));
@@ -840,14 +842,8 @@ function render() {
   }
 
   renderRing(summary);
-  text("#score-title", TONE_TITLE[summary.tone]);
-  if (!summary.total) text("#score-detail", "收到讀數後，這裡會顯示有幾項很舒服。");
-  else {
-    const parts = [`${summary.good} 項很舒服`];
-    if (summary.ok) parts.push(`${summary.ok} 項還可以`);
-    if (summary.bad) parts.push(`${summary.bad} 項要留意`);
-    text("#score-detail", parts.join("，"));
-  }
+  text("#score-title", watchPhrase(rows, summary));
+  text("#score-detail", highlightLine(rows));
   const tipList = document.getElementById("tips");
   tipList.replaceChildren();
   tips.forEach((tip, index) => {
@@ -870,20 +866,74 @@ function render() {
 }
 
 function sensorLine() {
-  if (state.source === "loading") return "正在向 ThingSpeak 讀取課室讀數…";
-  if (state.source === "demo") return "時鐘是香港時間。下面的讀數連接頻道後，就會改成雲板數據。";
-  if (!state.latestTime) return "頻道已連接，但還沒有讀數。";
-  const when = formatAxis(state.latestTime);
-  if (Date.now() - state.latestTime > 30 * 60 * 1000) {
-    return `最後感測時間 ${when}（${ago(state.latestTime)}）。雲板可能休息了。`;
+  if (state.source === "loading") return "正在讀取";
+  if (state.source === "demo") return "尚未連接感測器";
+  if (!state.latestTime) return "最後量度 —";
+  const parts = hkParts(new Date(state.latestTime));
+  const when = `${parts.hour}:${parts.minute}`;
+  if (Date.now() - state.latestTime > 30 * 60 * 1000) return `最後量度 ${when}（可能休息了）`;
+  return `最後量度 ${when}`;
+}
+
+function zhCount(n) {
+  return ["零", "一", "兩", "三", "四", "五", "六", "七", "八"][n] || String(n);
+}
+
+function roomSentence(rows, summary) {
+  if (!summary.total) return "還未收到讀數。雲板開機後，數字會出現在下面。";
+  const count = `${zhCount(summary.total)}項讀數`;
+  const flagged = rows.filter((row) => row.level === "ok" || row.level === "bad");
+  if (!flagged.length) return `${count}，全部在舒服範圍。`;
+  if (flagged.length === 1 && flagged[0].metric.key === "noise" && flagged[0].level === "ok") {
+    return `${count}，${zhCount(summary.good)}項在舒服範圍；只有聲音大了一點。`;
   }
-  return `感測時間 ${when}（${ago(state.latestTime)}）`;
+  const bits = flagged.map((row) => {
+    if (row.level === "bad") return `${row.metric.name}要留意`;
+    if (row.metric.key === "noise") return "聲音大了一點";
+    return `${row.metric.name}還可以`;
+  });
+  const lead = summary.good ? `${zhCount(summary.good)}項在舒服範圍` : "暫時沒有完全在舒服範圍的讀數";
+  return `${count}，${lead}；${flagged.length === 1 ? "只有" : ""}${bits.join("，")}。`;
+}
+
+function watchPhrase(rows, summary) {
+  if (!summary.total) return "等待讀數";
+  const bad = rows.filter((row) => row.level === "bad");
+  const ok = rows.filter((row) => row.level === "ok");
+  if (bad.length === 1 && !ok.length) return `一項要留意：${bad[0].metric.name}`;
+  if (!bad.length && ok.length === 1) return `一項還可以：${ok[0].metric.name}`;
+  if (!bad.length && !ok.length) return `${zhCount(summary.good)}項都很舒服`;
+  return `${zhCount(bad.length + ok.length)}項要看看`;
+}
+
+function highlightLine(rows) {
+  const co2 = rows.find((row) => row.metric.key === "co2");
+  if (!co2 || co2.value == null) return "二氧化碳未有讀數";
+  const value = `${formatNumber(co2.metric, co2.value)} ppm`;
+  if (co2.level === "good") return `空氣清新 · ${value}`;
+  if (co2.level === "ok") return `空氣還可以 · ${value}`;
+  return `空氣要開窗 · ${value}`;
+}
+
+function dockSentence(rows, summary) {
+  if (!summary.total) return "等待雲板送來讀數。";
+  const flagged = rows.filter((row) => row.level === "ok" || row.level === "bad");
+  if (!flagged.length) return "繼續保持，課室很舒服。";
+  const noise = flagged.find((row) => row.metric.key === "noise");
+  const others = flagged.filter((row) => row !== noise);
+  if (noise && !others.length) return "把聲量放輕一點，其他都很好。";
+  if (noise) return `把聲量放輕一點，${others.map((row) => row.metric.name).join("、")}也看看。`;
+  const first = flagged[0];
+  if (flagged.length === 1 && first.metric.key === "co2") return "開一點窗，其他都很好。";
+  if (flagged.length === 1 && first.metric.key === "temperature") return "告訴老師看看冷氣，其他都很好。";
+  if (flagged.length === 1) return first.metric.advice[first.level];
+  return `${flagged.map((row) => row.metric.name).join("、")}要看看，其他都很好。`;
 }
 
 function tickClock() {
   const clock = clockParts(new Date());
-  text("#clock-hm", `${clock.hour}:${clock.minute}`);
-  text("#clock-sec", `:${clock.second}`);
+  const parts = hkParts(new Date());
+  text("#clock-hm", `${parts.hour}:${parts.minute}`);
   text("#clock-period", clock.period);
   text("#clock-date", `${clock.date} ${clock.weekday}`);
   text("#sensor-line", sensorLine());
