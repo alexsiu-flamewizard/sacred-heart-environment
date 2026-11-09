@@ -475,15 +475,7 @@ async function fetchThingSpeak(id, key) {
 function summarize(metric, points) {
   const valid = points.filter((point) => metric.valid(point.v));
   const latest = valid.at(-1);
-  const previous = valid.at(-2);
-  const value = latest ? latest.v : null;
-  let trend = value == null ? "未有讀數" : "最新一筆";
-  if (latest && previous) {
-    const same = formatNumber(metric, latest.v) === formatNumber(metric, previous.v);
-    if (same) trend = "和上一筆一樣";
-    else trend = latest.v > previous.v ? "比上一筆高" : "比上一筆低";
-  }
-  return { value, trend, valid };
+  return { value: latest ? latest.v : null, valid };
 }
 
 function evaluate(now = Date.now()) {
@@ -542,7 +534,6 @@ function buildShells() {
     top.append(el("span", { class: "pill tiny", id: `pill-${metric.key}` }, "—"));
     card.append(top);
     card.append(el("div", { class: "metric-value", id: `value-${metric.key}` }, "—"));
-    card.append(el("div", { class: "metric-trend", id: `trend-${metric.key}` }, ""));
     const plot = el("div", { class: "plot plot-sm", "data-chart": metric.key });
     card.append(plot);
     metrics.append(card);
@@ -841,7 +832,6 @@ function render() {
     value.append(formatNumber(row.metric, row.value));
     if (row.value != null) value.append(el("span", { class: "metric-unit" }, row.metric.unit === "°C" || row.metric.unit === "%" ? row.metric.unit : ` ${row.metric.unit}`));
     value.title = "ThingSpeak 最新一筆讀數";
-    text(`#trend-${row.metric.key}`, row.level === "none" ? "未有讀數" : row.trend);
     setChart(document.querySelector(`#metric-${row.metric.key} .plot`), row.points, row.metric, true);
     text(`#chart-now-${row.metric.key}`, row.value == null ? "—" : valueText(row.metric, row.value));
     const valid = row.points.filter((point) => row.metric.valid(point.v));
