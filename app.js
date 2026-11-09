@@ -20,6 +20,7 @@ const METRICS = [
     field: 1,
     eps: 0.3,
     icon: "temp",
+    widget: "spark",
     valid: (v) => v > -5 && v < 55,
     bands: [
       { level: "good", text: "20–25.5°C", test: (v) => v >= 20 && v < 25.5 },
@@ -45,6 +46,7 @@ const METRICS = [
     field: 2,
     eps: 2,
     icon: "hum",
+    widget: "arc",
     valid: (v) => v > 0 && v <= 100,
     bands: [
       { level: "good", text: "40–70%", test: (v) => v >= 40 && v < 70 },
@@ -70,6 +72,7 @@ const METRICS = [
     field: 3,
     eps: 2,
     icon: "pm",
+    widget: "slider",
     valid: (v) => v >= 0 && v <= 1000,
     bands: [
       { level: "good", text: "15 或以下", test: (v) => v <= 15 },
@@ -95,6 +98,7 @@ const METRICS = [
     field: 4,
     eps: 15,
     icon: "co2",
+    widget: "line",
     valid: (v) => v >= 350 && v <= 5000,
     bands: [
       { level: "good", text: "低於 800 ppm", test: (v) => v < 800 },
@@ -120,6 +124,7 @@ const METRICS = [
     field: 5,
     eps: 15,
     icon: "tvoc",
+    widget: "bars",
     valid: (v) => v >= 0 && v <= 20000,
     bands: [
       { level: "good", text: "低於 200 ppb", test: (v) => v < 200 },
@@ -145,6 +150,7 @@ const METRICS = [
     field: 6,
     eps: 3,
     icon: "noise",
+    widget: "ring",
     valid: (v) => v > 0 && v <= 140,
     bands: [
       { level: "good", text: "60 dB 或以下", test: (v) => v <= 60 },
@@ -570,9 +576,119 @@ function watchPlot(plot) {
   plotObserver.observe(plot);
 }
 
+function svgNode(parent, name, attrs) {
+  const node = document.createElementNS("http://www.w3.org/2000/svg", name);
+  for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value);
+  parent.append(node);
+  return node;
+}
+
+function drawWidget(plot, spec) {
+  const { points, metric } = spec;
+  plot.querySelector(".empty")?.remove();
+  if (!points.length) {
+    plot.querySelector("svg")?.remove();
+    if (!plot.querySelector(".empty")) plot.append(el("p", { class: "empty" }, "未有讀數"));
+    return;
+  }
+  let svg = plot.querySelector("svg");
+  if (!svg) {
+    svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    plot.append(svg);
+  }
+  svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+  svg.replaceChildren();
+  const value = points[points.length - 1].v;
+  const track = "#efeae4";
+  if (metric.widget === "arc") {
+    svg.setAttribute("viewBox", "0 0 140 78");
+    const cx = 70;
+    const cy = 66;
+    const radius = 42;
+    const steps = 48;
+    const pts = [];
+    for (let i = 0; i <= steps; i += 1) {
+      const angle = Math.PI - (i / steps) * Math.PI;
+      pts.push([cx + radius * Math.cos(angle), cy - radius * Math.sin(angle)]);
+    }
+    let length = 0;
+    const d = pts.map((point, index) => {
+      if (index) length += Math.hypot(point[0] - pts[index - 1][0], point[1] - pts[index - 1][1]);
+      return `${index ? "L" : "M"}${point[0].toFixed(1)} ${point[1].toFixed(1)}`;
+    }).join(" ");
+    const pct = Math.min(1, Math.max(0, value / 100));
+    svgNode(svg, "path", { d, fill: "none", stroke: track, "stroke-width": 11, "stroke-linecap": "round", "stroke-linejoin": "round" });
+    svgNode(svg, "path", {
+      d,
+      fill: "none",
+      stroke: metric.color,
+      "stroke-width": 11,
+      "stroke-linecap": "round",
+      "stroke-linejoin": "round",
+      "stroke-dasharray": `${(length * pct).toFixed(2)} ${length.toFixed(2)}`,
+    });
+    return;
+  }
+  if (metric.widget === "slider") {
+    svg.setAttribute("viewBox", "0 0 140 48");
+    const pct = Math.min(1, Math.max(0, value / 35));
+    const x = 18 + pct * 104;
+    svgNode(svg, "line", { x1: 16, x2: 124, y1: 24, y2: 24, stroke: track, "stroke-width": 4, "stroke-linecap": "round" });
+    svgNode(svg, "circle", { cx: x, cy: 24, r: 9, fill: "#e5f6ec" });
+    svgNode(svg, "circle", { cx: x, cy: 24, r: 5.5, fill: metric.color });
+    return;
+  }
+  if (metric.widget === "bars") {
+    svg.setAttribute("viewBox", "0 0 140 64");
+    const recent = points.slice(-10);
+    const min = Math.min(...recent.map((point) => point.v));
+    const max = Math.max(...recent.map((point) => point.v));
+    const span = Math.max(1, max - min);
+    const gap = 5;
+    const width = 8;
+    const total = recent.length * width + (recent.length - 1) * gap;
+    let x = (140 - total) / 2;
+    recent.forEach((point) => {
+      const height = max === min ? 28 : 14 + ((point.v - min) / span) * 34;
+      svgNode(svg, "rect", {
+        x: x.toFixed(1),
+        y: (56 - height).toFixed(1),
+        width,
+        height: height.toFixed(1),
+        rx: 3,
+        fill: metric.color,
+      });
+      x += width + gap;
+    });
+    return;
+  }
+  if (metric.widget === "ring") {
+    svg.setAttribute("viewBox", "0 0 88 88");
+    const radius = 28;
+    const length = 2 * Math.PI * radius;
+    const pct = Math.min(1, Math.max(0, value / 100));
+    svgNode(svg, "circle", { cx: 44, cy: 44, r: radius, fill: "none", stroke: "#f6e8ee", "stroke-width": 10 });
+    svgNode(svg, "circle", {
+      cx: 44,
+      cy: 44,
+      r: radius,
+      fill: "none",
+      stroke: metric.color,
+      "stroke-width": 10,
+      "stroke-linecap": "round",
+      "stroke-dasharray": `${(length * pct).toFixed(2)} ${(length * (1 - pct)).toFixed(2)}`,
+      transform: "rotate(128 44 44)",
+    });
+  }
+}
+
 function drawChart(plot, attempt = 0) {
   const spec = charts.get(plot);
   if (!spec) return;
+  if (spec.compact && spec.metric.widget && spec.metric.widget !== "spark" && spec.metric.widget !== "line") {
+    drawWidget(plot, spec);
+    return;
+  }
   const width = plot.clientWidth;
   if (width < 20) {
     if (attempt < 8) requestAnimationFrame(() => drawChart(plot, attempt + 1));
@@ -615,7 +731,7 @@ function drawChart(plot, attempt = 0) {
   const xOf = (t) => pad.l + ((t - t0) / spanT) * innerW;
   const yOf = (v) => pad.t + (1 - (v - min) / (max - min)) * innerH;
   svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-  svg.setAttribute("preserveAspectRatio", "none");
+  svg.setAttribute("preserveAspectRatio", compact ? "xMidYMid meet" : "none");
   svg.replaceChildren();
   const add = (name, attrs) => {
     const node = document.createElementNS("http://www.w3.org/2000/svg", name);
@@ -648,17 +764,31 @@ function drawChart(plot, attempt = 0) {
       }).textContent = formatAxis(t);
     });
   }
+  if (compact && metric.widget === "line") {
+    const guide = yOf((dataMin + dataMax) / 2);
+    add("line", {
+      x1: pad.l,
+      x2: width - pad.r,
+      y1: guide,
+      y2: guide,
+      stroke: "#d5e0e8",
+      "stroke-width": 1.2,
+      "stroke-dasharray": "2.5 3.5",
+    });
+  }
   const gap = 45 * 60 * 1000;
   let segment = [];
   const flush = () => {
     if (!segment.length) return;
     const line = segment.map((point, index) => `${index ? "L" : "M"}${xOf(point.t).toFixed(1)},${yOf(point.v).toFixed(1)}`).join(" ");
     const bottom = (pad.t + innerH).toFixed(1);
-    add("path", {
-      d: `${line} L${xOf(segment[segment.length - 1].t).toFixed(1)},${bottom} L${xOf(segment[0].t).toFixed(1)},${bottom} Z`,
-      fill: metric.color,
-      opacity: "0.14",
-    });
+    if (!(compact && metric.widget === "line")) {
+      add("path", {
+        d: `${line} L${xOf(segment[segment.length - 1].t).toFixed(1)},${bottom} L${xOf(segment[0].t).toFixed(1)},${bottom} Z`,
+        fill: metric.color,
+        opacity: "0.16",
+      });
+    }
     if (segment.length === 1) {
       add("circle", { cx: xOf(segment[0].t), cy: yOf(segment[0].v), r: compact ? 2.5 : 3.5, fill: metric.color });
     } else {
@@ -679,9 +809,16 @@ function drawChart(plot, attempt = 0) {
     segment.push(point);
   }
   flush();
-  if (!compact) {
+  if (points.length) {
     const last = points[points.length - 1];
-    add("circle", { cx: xOf(last.t), cy: yOf(last.v), r: 4, fill: "#fff", stroke: metric.color, "stroke-width": 2 });
+    add("circle", {
+      cx: xOf(last.t),
+      cy: yOf(last.v),
+      r: compact ? 3 : 4,
+      fill: compact ? metric.color : "#fff",
+      stroke: metric.color,
+      "stroke-width": compact ? 0 : 2,
+    });
   }
   plot._layout = { points, xOf, yOf, width, height, metric, compact };
   if (!plot.dataset.bound) {
